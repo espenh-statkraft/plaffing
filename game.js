@@ -17,6 +17,28 @@ class PlayScene extends Phaser.Scene {
     this.jumpBufferMs = 120;
     this.maxJumps = 2;
     this.shootCooldownMs = 95;
+    this.playerBulletGravity = 760;
+    this.enemyBulletGravity = 860;
+
+    this.weaponHeatMax = 100;
+    this.weaponHeatPerShot = 6;
+    this.weaponHeatCoolPerMs = 0.018;
+    this.weaponHeatCoolOverheatedPerMs = 0.055;
+    this.weaponOverheatLockMs = 1700;
+
+    this.grenadeCooldownMs = 1900;
+    this.grenadeFuseMs = 1100;
+    this.grenadeSpeed = 560;
+    this.grenadeBlastRadius = 150;
+    this.grenadeShockwaveRadius = 210;
+    this.grenadeMaxDamage = 4;
+    this.grenadePlayerMaxDamage = 24;
+
+    this.playerMaxHealth = 100;
+    this.playerInvulnMs = 560;
+    this.enemyContactDamage = 18;
+    this.enemyBulletDamage = 12;
+    this.enemyShootRange = 560;
   }
 
   preload() {}
@@ -30,7 +52,9 @@ class PlayScene extends Phaser.Scene {
     this.createBackground();
     this.createLevel();
     this.createPlayer();
+    this.createGameState();
     this.createCombat();
+    this.createEnemies();
     this.createUi();
     this.createInput();
 
@@ -48,7 +72,10 @@ class PlayScene extends Phaser.Scene {
 
     this.makePlatformTexture();
     this.makeBulletTexture();
+    this.makeEnemyBulletTexture();
+    this.makeGrenadeTexture();
     this.makeGunTexture();
+    this.makeEnemyTexture();
     this.makePlayerTexture("player_idle", "idle");
     this.makePlayerTexture("player_walk_1", "walk1");
     this.makePlayerTexture("player_walk_2", "walk2");
@@ -108,6 +135,38 @@ class PlayScene extends Phaser.Scene {
     canvas.refresh();
   }
 
+  makeEnemyBulletTexture() {
+    const canvas = this.textures.createCanvas("enemy_bullet", 10, 4);
+    const ctx = canvas.getContext();
+    ctx.imageSmoothingEnabled = false;
+
+    ctx.fillStyle = "#ffccd0";
+    ctx.fillRect(3, 1, 5, 2);
+    ctx.fillStyle = "#ff6b74";
+    ctx.fillRect(8, 1, 2, 2);
+    ctx.fillStyle = "#8d1b23";
+    ctx.fillRect(0, 1, 3, 2);
+
+    canvas.refresh();
+  }
+
+  makeGrenadeTexture() {
+    const canvas = this.textures.createCanvas("grenade", 8, 8);
+    const ctx = canvas.getContext();
+    ctx.imageSmoothingEnabled = false;
+
+    ctx.fillStyle = "#48525b";
+    ctx.fillRect(1, 2, 6, 5);
+    ctx.fillStyle = "#7f8b96";
+    ctx.fillRect(2, 3, 4, 3);
+    ctx.fillStyle = "#d8a44b";
+    ctx.fillRect(3, 0, 2, 2);
+    ctx.fillStyle = "#f1dc75";
+    ctx.fillRect(3, 1, 2, 1);
+
+    canvas.refresh();
+  }
+
   makeGunTexture() {
     const canvas = this.textures.createCanvas("gun", 18, 7);
     const ctx = canvas.getContext();
@@ -121,6 +180,38 @@ class PlayScene extends Phaser.Scene {
     ctx.fillRect(6, 5, 2, 2);
     ctx.fillStyle = "#d6dce1";
     ctx.fillRect(16, 2, 2, 2);
+
+    canvas.refresh();
+  }
+
+  makeEnemyTexture() {
+    const w = 20;
+    const h = 28;
+    const canvas = this.textures.createCanvas("enemy", w, h);
+    const ctx = canvas.getContext();
+    ctx.imageSmoothingEnabled = false;
+
+    const px = (x, y, pw, ph, color) => {
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, pw, ph);
+    };
+
+    ctx.clearRect(0, 0, w, h);
+
+    px(7, 2, 6, 4, "#8a9196");
+    px(6, 6, 8, 2, "#c2cad1");
+
+    px(4, 8, 12, 8, "#5f666d");
+    px(5, 9, 10, 1, "#8f989f");
+    px(4, 16, 12, 2, "#454b52");
+
+    px(4, 10, 2, 6, "#727b83");
+    px(14, 10, 2, 6, "#727b83");
+
+    px(6, 18, 3, 8, "#2e3237");
+    px(11, 18, 3, 8, "#2e3237");
+    px(6, 26, 3, 2, "#4e545b");
+    px(11, 26, 3, 2, "#4e545b");
 
     canvas.refresh();
   }
@@ -257,6 +348,10 @@ class PlayScene extends Phaser.Scene {
     canvas.refresh();
   }
 
+  yFromGround(height) {
+    return this.groundY - Math.round(height * 0.72);
+  }
+
   createLevel() {
     this.platforms = this.physics.add.staticGroup();
 
@@ -266,25 +361,23 @@ class PlayScene extends Phaser.Scene {
       }
     };
 
-    const yFromGround = (height) => this.groundY - Math.round(height * 0.72);
-
     for (let x = 0; x < this.worldWidth; x += 48 * 8) {
       addTiles(x, this.groundY, 8);
     }
 
-    addTiles(320, yFromGround(150), 3);
-    addTiles(620, yFromGround(240), 4);
-    addTiles(1040, yFromGround(320), 3);
-    addTiles(1420, yFromGround(210), 4);
-    addTiles(1840, yFromGround(280), 3);
-    addTiles(2140, yFromGround(390), 3);
-    addTiles(2460, yFromGround(180), 5);
-    addTiles(2860, yFromGround(260), 3);
-    addTiles(3220, yFromGround(340), 4);
-    addTiles(3650, yFromGround(240), 4);
-    addTiles(4020, yFromGround(310), 3);
-    addTiles(4360, yFromGround(190), 5);
-    addTiles(4780, yFromGround(280), 3);
+    addTiles(320, this.yFromGround(150), 3);
+    addTiles(620, this.yFromGround(240), 4);
+    addTiles(1040, this.yFromGround(320), 3);
+    addTiles(1420, this.yFromGround(210), 4);
+    addTiles(1840, this.yFromGround(280), 3);
+    addTiles(2140, this.yFromGround(390), 3);
+    addTiles(2460, this.yFromGround(180), 5);
+    addTiles(2860, this.yFromGround(260), 3);
+    addTiles(3220, this.yFromGround(340), 4);
+    addTiles(3650, this.yFromGround(240), 4);
+    addTiles(4020, this.yFromGround(310), 3);
+    addTiles(4360, this.yFromGround(190), 5);
+    addTiles(4780, this.yFromGround(280), 3);
   }
 
   createPlayer() {
@@ -307,17 +400,34 @@ class PlayScene extends Phaser.Scene {
     this.jumpsUsed = 0;
   }
 
+  createGameState() {
+    this.playerHealth = this.playerMaxHealth;
+    this.score = 0;
+    this.isPlayerDead = false;
+    this.nextPlayerDamageTime = 0;
+  }
+
   createCombat() {
     this.bullets = this.physics.add.group({
       defaultKey: "bullet",
       maxSize: 400
     });
 
-    this.bullets.children.each((child) => {
-      child.body.allowGravity = false;
+    this.enemyBullets = this.physics.add.group({
+      defaultKey: "enemy_bullet",
+      maxSize: 260
+    });
+
+    this.grenades = this.physics.add.group({
+      defaultKey: "grenade",
+      maxSize: 36
     });
 
     this.nextShootTime = 0;
+    this.weaponHeat = 0;
+    this.weaponOverheatedUntil = 0;
+    this.nextGrenadeTime = 0;
+    this.wasRightButtonDown = false;
 
     this.fx = this.add.particles(0, 0, "px", {
       speed: { min: 60, max: 260 },
@@ -329,31 +439,208 @@ class PlayScene extends Phaser.Scene {
     });
     this.fx.setDepth(30);
 
+    this.enemyShotFx = this.add.particles(0, 0, "px", {
+      speed: { min: 30, max: 120 },
+      angle: { min: 0, max: 360 },
+      scale: { start: 1.4, end: 0 },
+      lifespan: { min: 70, max: 140 },
+      quantity: 0,
+      tint: [0xff8b96, 0xff4e58]
+    });
+    this.enemyShotFx.setDepth(30);
+
+    this.enemyExplosionFx = this.add.particles(0, 0, "px", {
+      speed: { min: 120, max: 360 },
+      angle: { min: 0, max: 360 },
+      scale: { start: 2.6, end: 0 },
+      lifespan: { min: 180, max: 300 },
+      quantity: 0,
+      tint: [0xffd28a, 0xff7a3d, 0xf44336],
+      blendMode: "ADD"
+    });
+    this.enemyExplosionFx.setDepth(40);
+
+    this.grenadeExplosionFx = this.add.particles(0, 0, "px", {
+      speed: { min: 130, max: 430 },
+      angle: { min: 0, max: 360 },
+      scale: { start: 2.8, end: 0 },
+      lifespan: { min: 240, max: 380 },
+      quantity: 0,
+      tint: [0xffefb5, 0xffbf69, 0xff7f3f],
+      blendMode: "ADD"
+    });
+    this.grenadeExplosionFx.setDepth(45);
+
     this.physics.add.collider(this.bullets, this.platforms, (bullet) => {
       this.destroyBullet(bullet, true);
     });
+
+    this.physics.add.collider(this.enemyBullets, this.platforms, (bullet) => {
+      this.destroyEnemyBullet(bullet, true);
+    });
+
+    this.physics.add.collider(this.grenades, this.platforms, (grenade) => {
+      if (grenade.active && grenade.body.speed > 120) {
+        this.fx.emitParticleAt(grenade.x, grenade.y, 2);
+      }
+    });
+  }
+
+  createEnemies() {
+    this.enemies = this.physics.add.group({ maxSize: 80 });
+
+    const spawnData = [
+      { x: 520, height: 150 },
+      { x: 760, height: 240 },
+      { x: 1070, height: 320 },
+      { x: 1500, height: 210 },
+      { x: 1880, height: 280 },
+      { x: 2230, height: 390 },
+      { x: 2520, height: 180 },
+      { x: 2950, height: 260 },
+      { x: 3310, height: 340 },
+      { x: 3720, height: 240 },
+      { x: 4100, height: 310 },
+      { x: 4470, height: 190 },
+      { x: 4870, height: 280 },
+      { x: 910, height: 0 },
+      { x: 1760, height: 0 },
+      { x: 2740, height: 0 },
+      { x: 3560, height: 0 },
+      { x: 4620, height: 0 }
+    ];
+
+    spawnData.forEach((spawn) => this.spawnEnemy(spawn.x, spawn.height));
+
+    this.physics.add.collider(this.enemies, this.platforms);
+    this.physics.add.collider(this.grenades, this.enemies);
+
+    this.physics.add.overlap(
+      this.bullets,
+      this.enemies,
+      this.handlePlayerBulletEnemy,
+      null,
+      this
+    );
+    this.physics.add.overlap(
+      this.player,
+      this.enemyBullets,
+      this.handleEnemyBulletPlayer,
+      null,
+      this
+    );
+    this.physics.add.overlap(
+      this.player,
+      this.enemies,
+      this.handlePlayerTouchEnemy,
+      null,
+      this
+    );
+  }
+
+  spawnEnemy(x, height) {
+    const y = height > 0 ? this.yFromGround(height) - 38 : this.groundY - 38;
+    const enemy = this.enemies.create(x, y, "enemy");
+    if (!enemy) {
+      return;
+    }
+
+    enemy.setCollideWorldBounds(true);
+    enemy.setDragX(900);
+    enemy.setMaxVelocity(240, 1000);
+
+    enemy.body.setSize(12, 24);
+    enemy.body.setOffset(4, 2);
+
+    const armor = Phaser.Math.Between(1, 10);
+    const scale = Phaser.Math.Linear(1.7, 2.25, (armor - 1) / 9);
+
+    enemy.maxArmor = armor;
+    enemy.armor = armor;
+    enemy.baseSpeed = Phaser.Math.Between(65, 120);
+    enemy.anchorX = x;
+    enemy.patrolRange = Phaser.Math.Between(80, 190);
+    enemy.direction = Phaser.Math.Between(0, 1) === 0 ? -1 : 1;
+    enemy.shootCooldownMs = Phaser.Math.Between(950, 1700);
+    enemy.nextShotTime = this.time.now + Phaser.Math.Between(400, 1300);
+    enemy.touchDamage = this.enemyContactDamage;
+
+    enemy.setScale(scale);
+    enemy.setTint(this.getEnemyTint(enemy.armor));
+
+    enemy.armorText = this.add
+      .text(enemy.x, enemy.y - 38, `${enemy.armor}`, {
+        fontFamily: "monospace",
+        fontSize: "14px",
+        color: "#f3fbff",
+        stroke: "#1a1012",
+        strokeThickness: 3
+      })
+      .setOrigin(0.5)
+      .setDepth(26);
+  }
+
+  getEnemyTint(armor) {
+    const clamped = Phaser.Math.Clamp(armor, 1, 10);
+    const t = (clamped - 1) / 9;
+    const r = Math.round(105 + 145 * t);
+    const g = Math.round(225 - 145 * t);
+    const b = Math.round(110 - 70 * t);
+    return (r << 16) | (g << 8) | b;
   }
 
   createUi() {
-    this.uiText = this.add
+    this.hudText = this.add
+      .text(14, 12, "", {
+        fontFamily: "monospace",
+        fontSize: "18px",
+        color: "#e6fff2",
+        lineSpacing: 5,
+        padding: { x: 8, y: 6 },
+        backgroundColor: "rgba(8,20,22,0.5)"
+      })
+      .setScrollFactor(0)
+      .setDepth(1000);
+
+    this.helpText = this.add
       .text(
         14,
-        12,
-        "WASD / Arrow keys to move\nSpace, W or Up to jump (double jump)\nMouse to aim, LMB to shoot",
+        102,
+        "WASD / Arrow keys to move\nSpace, W or Up to jump (double jump)\nMouse to aim, hold LMB to shoot\nRMB to lob grenade\nR to restart after death",
         {
           fontFamily: "monospace",
-          fontSize: "16px",
+          fontSize: "15px",
           color: "#e6fff2",
           lineSpacing: 6,
           padding: { x: 8, y: 6 },
-          backgroundColor: "rgba(8,20,22,0.48)"
+          backgroundColor: "rgba(8,20,22,0.45)"
         }
       )
       .setScrollFactor(0)
       .setDepth(1000);
+
+    this.deathText = this.add
+      .text(this.scale.width * 0.5, this.scale.height * 0.42, "YOU DIED\nPress R to restart", {
+        fontFamily: "monospace",
+        fontSize: "44px",
+        align: "center",
+        color: "#ffb3b3",
+        stroke: "#2c0d11",
+        strokeThickness: 8
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(1200)
+      .setVisible(false);
+
+    this.updateUi();
   }
 
   createInput() {
+    if (this.input.mouse) {
+      this.input.mouse.disableContextMenu();
+    }
+
     this.keys = this.input.keyboard.addKeys({
       leftA: Phaser.Input.Keyboard.KeyCodes.A,
       rightD: Phaser.Input.Keyboard.KeyCodes.D,
@@ -361,7 +648,8 @@ class PlayScene extends Phaser.Scene {
       rightArrow: Phaser.Input.Keyboard.KeyCodes.RIGHT,
       jumpSpace: Phaser.Input.Keyboard.KeyCodes.SPACE,
       jumpW: Phaser.Input.Keyboard.KeyCodes.W,
-      jumpUp: Phaser.Input.Keyboard.KeyCodes.UP
+      jumpUp: Phaser.Input.Keyboard.KeyCodes.UP,
+      restartR: Phaser.Input.Keyboard.KeyCodes.R
     });
   }
 
@@ -382,6 +670,15 @@ class PlayScene extends Phaser.Scene {
   }
 
   update(time, delta) {
+    this.updateParallax();
+
+    if (this.isPlayerDead) {
+      if (Phaser.Input.Keyboard.JustDown(this.keys.restartR)) {
+        this.scene.restart();
+      }
+      return;
+    }
+
     const dt = delta;
     const body = this.player.body;
     const onGround = body.blocked.down || body.touching.down;
@@ -437,11 +734,16 @@ class PlayScene extends Phaser.Scene {
       this.jumpsUsed = 0;
     }
 
+    this.updateWeaponHeat(time, delta);
     this.updateAimAndWeapon();
     this.updateShooting(time);
+    this.updateGrenadeThrowing(time);
+    this.updateEnemies(time);
     this.updateBullets(time);
+    this.updateEnemyBullets(time);
+    this.updateGrenades(time);
     this.updateAnimation(moveDir, onGround);
-    this.updateParallax();
+    this.updateUi(time);
   }
 
   updateAimAndWeapon() {
@@ -470,7 +772,11 @@ class PlayScene extends Phaser.Scene {
   }
 
   updateShooting(time) {
-    if (!this.input.activePointer.isDown) {
+    const pointer = this.input.activePointer;
+    if (time < this.weaponOverheatedUntil) {
+      return;
+    }
+    if (!pointer.leftButtonDown()) {
       return;
     }
     if (time < this.nextShootTime) {
@@ -489,7 +795,8 @@ class PlayScene extends Phaser.Scene {
     bullet.setVisible(true);
     bullet.setRotation(this.aimAngle);
     bullet.setDepth(18);
-    bullet.body.allowGravity = false;
+    bullet.body.allowGravity = true;
+    bullet.setGravityY(this.playerBulletGravity - this.physics.world.gravity.y);
     bullet.body.setSize(8, 4, true);
     bullet.setCollideWorldBounds(false);
     bullet.spawnTime = time;
@@ -498,13 +805,146 @@ class PlayScene extends Phaser.Scene {
     this.physics.velocityFromRotation(this.aimAngle, speed, bullet.body.velocity);
 
     this.fx.emitParticleAt(spawnX, spawnY, 8);
+
+    this.weaponHeat = Math.min(this.weaponHeatMax, this.weaponHeat + this.weaponHeatPerShot);
+    if (this.weaponHeat >= this.weaponHeatMax) {
+      this.weaponOverheatedUntil = time + this.weaponOverheatLockMs;
+      this.fx.emitParticleAt(spawnX, spawnY, 12);
+      this.nextShootTime = this.weaponOverheatedUntil;
+      return;
+    }
+
     this.nextShootTime = time + this.shootCooldownMs;
+  }
+
+  updateWeaponHeat(time, delta) {
+    const coolRate =
+      time < this.weaponOverheatedUntil
+        ? this.weaponHeatCoolOverheatedPerMs
+        : this.weaponHeatCoolPerMs;
+    this.weaponHeat = Math.max(0, this.weaponHeat - delta * coolRate);
+  }
+
+  updateGrenadeThrowing(time) {
+    const pointer = this.input.activePointer;
+    const rightDown = pointer.rightButtonDown();
+    if (rightDown && !this.wasRightButtonDown) {
+      this.throwGrenade(time);
+    }
+    this.wasRightButtonDown = rightDown;
+  }
+
+  throwGrenade(time) {
+    if (time < this.nextGrenadeTime) {
+      return;
+    }
+
+    const spawnX = this.player.x + Math.cos(this.aimAngle) * 18;
+    const spawnY = this.player.y - 14 + Math.sin(this.aimAngle) * 18;
+    const launchAngle = Phaser.Math.Clamp(this.aimAngle, -2.45, 0.6);
+
+    const grenade = this.grenades.get(spawnX, spawnY, "grenade");
+    if (!grenade) {
+      return;
+    }
+
+    grenade.setActive(true);
+    grenade.setVisible(true);
+    grenade.setDepth(19);
+    grenade.setRotation(launchAngle);
+    grenade.body.allowGravity = true;
+    grenade.body.setCircle(4, 0, 0);
+    grenade.setCollideWorldBounds(false);
+    grenade.setBounce(0.45, 0.28);
+    grenade.spawnTime = time;
+    grenade.detonateAt = time + this.grenadeFuseMs;
+
+    this.physics.velocityFromRotation(launchAngle, this.grenadeSpeed, grenade.body.velocity);
+    grenade.body.velocity.y -= 170;
+
+    this.fx.emitParticleAt(spawnX, spawnY, 5);
+    this.nextGrenadeTime = time + this.grenadeCooldownMs;
+  }
+
+  updateEnemies(time) {
+    this.enemies.children.each((enemy) => {
+      if (!enemy.active) {
+        return;
+      }
+
+      if (enemy.armorText) {
+        enemy.armorText.setPosition(enemy.x, enemy.y - 38);
+      }
+
+      if (enemy.body.blocked.left) {
+        enemy.direction = 1;
+      } else if (enemy.body.blocked.right) {
+        enemy.direction = -1;
+      }
+
+      if (enemy.x < enemy.anchorX - enemy.patrolRange) {
+        enemy.direction = 1;
+      } else if (enemy.x > enemy.anchorX + enemy.patrolRange) {
+        enemy.direction = -1;
+      }
+
+      enemy.setVelocityX(enemy.direction * enemy.baseSpeed);
+      enemy.setFlipX(enemy.direction < 0);
+
+      const dx = this.player.x - enemy.x;
+      const dy = this.player.y - 12 - enemy.y;
+      const inRange = Math.abs(dx) <= this.enemyShootRange && Math.abs(dy) <= 220;
+      if (inRange && time >= enemy.nextShotTime) {
+        this.enemyShoot(enemy, time);
+      }
+    });
+  }
+
+  enemyShoot(enemy, time) {
+    if (!enemy.active) {
+      return;
+    }
+
+    const angle = Phaser.Math.Angle.Between(
+      enemy.x,
+      enemy.y - 10,
+      this.player.x,
+      this.player.y - 14
+    );
+
+    const spawnX = enemy.x + Math.cos(angle) * 18;
+    const spawnY = enemy.y - 10 + Math.sin(angle) * 18;
+
+    const bullet = this.enemyBullets.get(spawnX, spawnY, "enemy_bullet");
+    if (!bullet) {
+      return;
+    }
+
+    bullet.setActive(true);
+    bullet.setVisible(true);
+    bullet.setDepth(18);
+    bullet.setRotation(angle);
+    bullet.body.allowGravity = true;
+    bullet.setGravityY(this.enemyBulletGravity - this.physics.world.gravity.y);
+    bullet.body.setSize(8, 4, true);
+    bullet.setCollideWorldBounds(false);
+    bullet.spawnTime = time;
+
+    const speed = 520;
+    this.physics.velocityFromRotation(angle, speed, bullet.body.velocity);
+
+    this.enemyShotFx.emitParticleAt(spawnX, spawnY, 5);
+    enemy.nextShotTime = time + enemy.shootCooldownMs + Phaser.Math.Between(-150, 220);
   }
 
   updateBullets(time) {
     this.bullets.children.each((bullet) => {
       if (!bullet.active) {
         return;
+      }
+
+      if (bullet.body.speed > 2) {
+        bullet.setRotation(Math.atan2(bullet.body.velocity.y, bullet.body.velocity.x));
       }
 
       if (
@@ -519,6 +959,52 @@ class PlayScene extends Phaser.Scene {
     });
   }
 
+  updateEnemyBullets(time) {
+    this.enemyBullets.children.each((bullet) => {
+      if (!bullet.active) {
+        return;
+      }
+
+      if (bullet.body.speed > 2) {
+        bullet.setRotation(Math.atan2(bullet.body.velocity.y, bullet.body.velocity.x));
+      }
+
+      if (
+        time - bullet.spawnTime > 2200 ||
+        bullet.x < -40 ||
+        bullet.x > this.worldWidth + 40 ||
+        bullet.y < -40 ||
+        bullet.y > this.worldHeight + 40
+      ) {
+        this.destroyEnemyBullet(bullet, false);
+      }
+    });
+  }
+
+  updateGrenades(time) {
+    this.grenades.children.each((grenade) => {
+      if (!grenade.active) {
+        return;
+      }
+
+      grenade.setRotation(grenade.rotation + grenade.body.velocity.x * 0.0009);
+
+      if (time >= grenade.detonateAt) {
+        this.explodeGrenade(grenade);
+        return;
+      }
+
+      if (
+        grenade.x < -80 ||
+        grenade.x > this.worldWidth + 80 ||
+        grenade.y < -80 ||
+        grenade.y > this.worldHeight + 80
+      ) {
+        this.destroyGrenade(grenade);
+      }
+    });
+  }
+
   destroyBullet(bullet, withImpactFx) {
     if (withImpactFx) {
       this.fx.emitParticleAt(bullet.x, bullet.y, 6);
@@ -527,6 +1013,250 @@ class PlayScene extends Phaser.Scene {
     bullet.body.stop();
     bullet.setActive(false);
     bullet.setVisible(false);
+  }
+
+  destroyEnemyBullet(bullet, withImpactFx) {
+    if (withImpactFx) {
+      this.enemyShotFx.emitParticleAt(bullet.x, bullet.y, 4);
+    }
+
+    bullet.body.stop();
+    bullet.setActive(false);
+    bullet.setVisible(false);
+  }
+
+  destroyGrenade(grenade) {
+    grenade.body.stop();
+    grenade.setActive(false);
+    grenade.setVisible(false);
+  }
+
+  explodeGrenade(grenade) {
+    if (!grenade.active) {
+      return;
+    }
+
+    const x = grenade.x;
+    const y = grenade.y;
+    this.destroyGrenade(grenade);
+
+    this.grenadeExplosionFx.emitParticleAt(x, y, 34);
+    this.showShockwave(x, y);
+
+    this.enemies.children.each((enemy) => {
+      if (!enemy.active) {
+        return;
+      }
+
+      const ex = enemy.x;
+      const ey = enemy.y - 10;
+      const dx = ex - x;
+      const dy = ey - y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance <= this.grenadeShockwaveRadius) {
+        const shockFalloff = 1 - distance / this.grenadeShockwaveRadius;
+        const norm = distance > 0.001 ? distance : 1;
+        const nx = dx / norm;
+        const ny = dy / norm;
+        const force = Phaser.Math.Linear(90, 420, shockFalloff);
+        this.applyEnemyImpact(enemy, nx * force, ny * force - 140 * shockFalloff);
+      }
+
+      if (distance <= this.grenadeBlastRadius) {
+        const blastFalloff = 1 - distance / this.grenadeBlastRadius;
+        const damage = Math.max(1, Math.round(this.grenadeMaxDamage * blastFalloff));
+        this.damageEnemy(enemy, damage);
+      }
+    });
+
+    if (!this.isPlayerDead) {
+      const px = this.player.x;
+      const py = this.player.y - 14;
+      const dx = px - x;
+      const dy = py - y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance <= this.grenadeShockwaveRadius) {
+        const shockFalloff = 1 - distance / this.grenadeShockwaveRadius;
+        const norm = distance > 0.001 ? distance : 1;
+        const nx = dx / norm;
+        const ny = dy / norm;
+        const force = Phaser.Math.Linear(120, 470, shockFalloff);
+
+        this.player.setVelocity(
+          Phaser.Math.Clamp(this.player.body.velocity.x + nx * force, -620, 620),
+          Phaser.Math.Clamp(this.player.body.velocity.y + ny * force - 150 * shockFalloff, -980, 980)
+        );
+      }
+
+      if (distance <= this.grenadeBlastRadius) {
+        const blastFalloff = 1 - distance / this.grenadeBlastRadius;
+        const damage = Math.max(3, Math.round(this.grenadePlayerMaxDamage * blastFalloff));
+        this.applyPlayerDamage(damage);
+      }
+    }
+  }
+
+  showShockwave(x, y) {
+    const ring = this.add
+      .circle(x, y, 8, 0xffefbf, 0.25)
+      .setStrokeStyle(2, 0xfff6d3, 0.85)
+      .setDepth(44);
+
+    this.tweens.add({
+      targets: ring,
+      radius: this.grenadeShockwaveRadius,
+      alpha: 0,
+      duration: 260,
+      ease: "Quad.Out",
+      onComplete: () => {
+        ring.destroy();
+      }
+    });
+  }
+
+  handlePlayerBulletEnemy(bullet, enemy) {
+    if (!bullet.active || !enemy.active) {
+      return;
+    }
+
+    const impactDirection = Math.sign(bullet.body.velocity.x) || 1;
+    this.destroyBullet(bullet, true);
+    this.applyEnemyImpact(enemy, impactDirection * 130, -28);
+    this.damageEnemy(enemy, 1);
+  }
+
+  applyEnemyImpact(enemy, impulseX, impulseY) {
+    if (!enemy.active) {
+      return;
+    }
+
+    const vx = Phaser.Math.Clamp(enemy.body.velocity.x + impulseX, -420, 420);
+    const vy = Phaser.Math.Clamp(enemy.body.velocity.y + impulseY, -900, 780);
+    enemy.setVelocity(vx, vy);
+  }
+
+  damageEnemy(enemy, amount) {
+    if (!enemy.active) {
+      return;
+    }
+
+    enemy.armor -= amount;
+
+    if (enemy.armorText) {
+      enemy.armorText.setText(`${Math.max(0, enemy.armor)}`);
+    }
+
+    enemy.setTintFill(0xffffff);
+    this.time.delayedCall(50, () => {
+      if (enemy.active) {
+        enemy.clearTint();
+        enemy.setTint(this.getEnemyTint(Math.max(1, enemy.armor)));
+      }
+    });
+
+    if (enemy.armor <= 0) {
+      this.killEnemy(enemy);
+    }
+  }
+
+  killEnemy(enemy) {
+    if (!enemy.active) {
+      return;
+    }
+
+    this.enemyExplosionFx.emitParticleAt(enemy.x, enemy.y - 10, 24 + enemy.maxArmor * 2);
+
+    if (enemy.armorText) {
+      enemy.armorText.destroy();
+      enemy.armorText = null;
+    }
+
+    this.score += enemy.maxArmor * 10;
+    this.updateUi();
+    enemy.disableBody(true, true);
+  }
+
+  handleEnemyBulletPlayer(player, bullet) {
+    if (!bullet.active || this.isPlayerDead) {
+      return;
+    }
+
+    const pushDirection = Math.sign(player.x - bullet.x) || 1;
+    this.destroyEnemyBullet(bullet, true);
+    player.setVelocityX(pushDirection * 240);
+    this.applyPlayerDamage(this.enemyBulletDamage);
+  }
+
+  handlePlayerTouchEnemy(player, enemy) {
+    if (!enemy.active || this.isPlayerDead) {
+      return;
+    }
+
+    const pushDirection = Math.sign(player.x - enemy.x) || 1;
+    player.setVelocityX(pushDirection * 330);
+    this.applyPlayerDamage(enemy.touchDamage);
+  }
+
+  applyPlayerDamage(amount) {
+    if (this.isPlayerDead) {
+      return;
+    }
+
+    const now = this.time.now;
+    if (now < this.nextPlayerDamageTime) {
+      return;
+    }
+
+    this.playerHealth = Math.max(0, this.playerHealth - amount);
+    this.nextPlayerDamageTime = now + this.playerInvulnMs;
+
+    this.player.setTintFill(0xff7b7b);
+    this.time.delayedCall(90, () => {
+      if (!this.isPlayerDead) {
+        this.player.clearTint();
+      }
+    });
+
+    this.updateUi();
+
+    if (this.playerHealth <= 0) {
+      this.handlePlayerDeath();
+    }
+  }
+
+  handlePlayerDeath() {
+    if (this.isPlayerDead) {
+      return;
+    }
+
+    this.isPlayerDead = true;
+    this.playerHealth = 0;
+    this.player.clearTint();
+    this.player.setTint(0x6d0f18);
+    this.player.setVelocity(0, 0);
+    this.player.setAcceleration(0, 0);
+    this.player.body.enable = false;
+    this.weapon.setVisible(false);
+    this.deathText.setVisible(true);
+    this.updateUi();
+  }
+
+  updateUi(time = this.time.now) {
+    const statusText = this.isPlayerDead ? "DEAD" : "ALIVE";
+    const overheatRemaining = Math.max(0, this.weaponOverheatedUntil - time);
+    const weaponText =
+      overheatRemaining > 0
+        ? `OVERHEATED ${((overheatRemaining / 1000) | 0) + 1}s`
+        : `Heat ${Math.round(this.weaponHeat)}%`;
+    const grenadeRemaining = Math.max(0, this.nextGrenadeTime - time);
+    const grenadeText =
+      grenadeRemaining > 0 ? `${(grenadeRemaining / 1000).toFixed(1)}s` : "READY";
+
+    this.hudText.setText(
+      `Health: ${this.playerHealth}/${this.playerMaxHealth}\nScore: ${this.score}\nStatus: ${statusText}\nWeapon: ${weaponText}\nGrenade: ${grenadeText}`
+    );
   }
 
   updateAnimation(moveDir, onGround) {
