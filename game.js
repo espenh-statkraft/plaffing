@@ -28,7 +28,9 @@ class PlayScene extends Phaser.Scene {
 
     this.grenadeCooldownMs = 1900;
     this.grenadeFuseMs = 1100;
-    this.grenadeSpeed = 560;
+    this.grenadeMinSpeed = 250;
+    this.grenadeSpeed = 760;
+    this.grenadeChargeMaxMs = 900;
     this.grenadeBlastRadius = 150;
     this.grenadeShockwaveRadius = 210;
     this.grenadeMaxDamage = 4;
@@ -427,6 +429,9 @@ class PlayScene extends Phaser.Scene {
     this.weaponHeat = 0;
     this.weaponOverheatedUntil = 0;
     this.nextGrenadeTime = 0;
+    this.isChargingGrenade = false;
+    this.grenadeChargeStartTime = 0;
+    this.grenadeChargeRatio = 0;
     this.wasRightButtonDown = false;
 
     this.fx = this.add.particles(0, 0, "px", {
@@ -472,10 +477,16 @@ class PlayScene extends Phaser.Scene {
     this.grenadeExplosionFx.setDepth(45);
 
     this.physics.add.collider(this.bullets, this.platforms, (bullet) => {
+      if (!bullet.active) {
+        return;
+      }
       this.destroyBullet(bullet, true);
     });
 
     this.physics.add.collider(this.enemyBullets, this.platforms, (bullet) => {
+      if (!bullet.active) {
+        return;
+      }
       this.destroyEnemyBullet(bullet, true);
     });
 
@@ -606,7 +617,7 @@ class PlayScene extends Phaser.Scene {
       .text(
         14,
         102,
-        "WASD / Arrow keys to move\nSpace, W or Up to jump (double jump)\nMouse to aim, hold LMB to shoot\nRMB to lob grenade\nR to restart after death",
+        "WASD / Arrow keys to move\nSpace, W or Up to jump (double jump)\nMouse to aim, hold LMB to shoot\nHold RMB to charge grenade, release to throw\nR to restart after death",
         {
           fontFamily: "monospace",
           fontSize: "15px",
@@ -632,6 +643,20 @@ class PlayScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(1200)
       .setVisible(false);
+
+    this.grenadeChargeText = this.add
+      .text(14, 202, "", {
+        fontFamily: "monospace",
+        fontSize: "14px",
+        color: "#ffe5b4",
+        padding: { x: 8, y: 5 },
+        backgroundColor: "rgba(26,16,8,0.55)"
+      })
+      .setScrollFactor(0)
+      .setDepth(1000)
+      .setVisible(false);
+
+    this.grenadeChargeBar = this.add.graphics().setScrollFactor(0).setDepth(1000);
 
     this.updateUi();
   }
@@ -743,6 +768,7 @@ class PlayScene extends Phaser.Scene {
     this.updateEnemyBullets(time);
     this.updateGrenades(time);
     this.updateAnimation(moveDir, onGround);
+    this.updateGrenadeChargeIndicator(time);
     this.updateUi(time);
   }
 
@@ -791,8 +817,7 @@ class PlayScene extends Phaser.Scene {
       return;
     }
 
-    bullet.setActive(true);
-    bullet.setVisible(true);
+    bullet.enableBody(true, spawnX, spawnY, true, true);
     bullet.setRotation(this.aimAngle);
     bullet.setDepth(18);
     bullet.body.allowGravity = true;
@@ -829,12 +854,51 @@ class PlayScene extends Phaser.Scene {
     const pointer = this.input.activePointer;
     const rightDown = pointer.rightButtonDown();
     if (rightDown && !this.wasRightButtonDown) {
-      this.throwGrenade(time);
+      this.startGrenadeCharge(time);
+    } else if (!rightDown && this.wasRightButtonDown) {
+      this.releaseGrenadeThrow(time);
     }
     this.wasRightButtonDown = rightDown;
+
+    if (this.isChargingGrenade) {
+      this.grenadeChargeRatio = this.getGrenadeChargeRatio(time);
+    }
   }
 
-  throwGrenade(time) {
+  startGrenadeCharge(time) {
+    if (this.isPlayerDead || time < this.nextGrenadeTime) {
+      return;
+    }
+
+    this.isChargingGrenade = true;
+    this.grenadeChargeStartTime = time;
+    this.grenadeChargeRatio = 0;
+  }
+
+  releaseGrenadeThrow(time) {
+    if (!this.isChargingGrenade) {
+      return;
+    }
+
+    const chargeRatio = this.getGrenadeChargeRatio(time);
+    this.isChargingGrenade = false;
+    this.grenadeChargeRatio = 0;
+    this.throwGrenade(time, chargeRatio);
+  }
+
+  getGrenadeChargeRatio(time) {
+    if (!this.isChargingGrenade) {
+      return 0;
+    }
+
+    return Phaser.Math.Clamp(
+      (time - this.grenadeChargeStartTime) / this.grenadeChargeMaxMs,
+      0,
+      1
+    );
+  }
+
+  throwGrenade(time, chargeRatio = 1) {
     if (time < this.nextGrenadeTime) {
       return;
     }
@@ -848,8 +912,7 @@ class PlayScene extends Phaser.Scene {
       return;
     }
 
-    grenade.setActive(true);
-    grenade.setVisible(true);
+    grenade.enableBody(true, spawnX, spawnY, true, true);
     grenade.setDepth(19);
     grenade.setRotation(launchAngle);
     grenade.body.allowGravity = true;
@@ -859,11 +922,45 @@ class PlayScene extends Phaser.Scene {
     grenade.spawnTime = time;
     grenade.detonateAt = time + this.grenadeFuseMs;
 
-    this.physics.velocityFromRotation(launchAngle, this.grenadeSpeed, grenade.body.velocity);
-    grenade.body.velocity.y -= 170;
+    const launchSpeed = Phaser.Math.Linear(
+      this.grenadeMinSpeed,
+      this.grenadeSpeed,
+      Phaser.Math.Clamp(chargeRatio, 0, 1)
+    );
+    const liftBoost = Phaser.Math.Linear(95, 170, Phaser.Math.Clamp(chargeRatio, 0, 1));
+    this.physics.velocityFromRotation(launchAngle, launchSpeed, grenade.body.velocity);
+    grenade.body.velocity.y -= liftBoost;
 
     this.fx.emitParticleAt(spawnX, spawnY, 5);
     this.nextGrenadeTime = time + this.grenadeCooldownMs;
+  }
+
+  updateGrenadeChargeIndicator(time = this.time.now) {
+    this.grenadeChargeBar.clear();
+
+    if (!this.isChargingGrenade || this.isPlayerDead) {
+      this.grenadeChargeText.setVisible(false);
+      return;
+    }
+
+    const charge = this.getGrenadeChargeRatio(time);
+    const percent = Math.round(charge * 100);
+    const x = 14;
+    const y = 230;
+    const width = 240;
+    const height = 18;
+    const fillWidth = Math.max(2, (width - 6) * charge);
+    const fillColor = charge >= 0.995 ? 0xffde7a : 0xffa45c;
+
+    this.grenadeChargeText.setVisible(true);
+    this.grenadeChargeText.setText(`Grenade Charge: ${percent}%`);
+
+    this.grenadeChargeBar.fillStyle(0x081012, 0.7);
+    this.grenadeChargeBar.fillRect(x, y, width, height);
+    this.grenadeChargeBar.lineStyle(2, 0xb6d7d9, 0.85);
+    this.grenadeChargeBar.strokeRect(x, y, width, height);
+    this.grenadeChargeBar.fillStyle(fillColor, 0.95);
+    this.grenadeChargeBar.fillRect(x + 3, y + 3, fillWidth, height - 6);
   }
 
   updateEnemies(time) {
@@ -920,8 +1017,7 @@ class PlayScene extends Phaser.Scene {
       return;
     }
 
-    bullet.setActive(true);
-    bullet.setVisible(true);
+    bullet.enableBody(true, spawnX, spawnY, true, true);
     bullet.setDepth(18);
     bullet.setRotation(angle);
     bullet.body.allowGravity = true;
@@ -1010,9 +1106,7 @@ class PlayScene extends Phaser.Scene {
       this.fx.emitParticleAt(bullet.x, bullet.y, 6);
     }
 
-    bullet.body.stop();
-    bullet.setActive(false);
-    bullet.setVisible(false);
+    bullet.disableBody(true, true);
   }
 
   destroyEnemyBullet(bullet, withImpactFx) {
@@ -1020,15 +1114,11 @@ class PlayScene extends Phaser.Scene {
       this.enemyShotFx.emitParticleAt(bullet.x, bullet.y, 4);
     }
 
-    bullet.body.stop();
-    bullet.setActive(false);
-    bullet.setVisible(false);
+    bullet.disableBody(true, true);
   }
 
   destroyGrenade(grenade) {
-    grenade.body.stop();
-    grenade.setActive(false);
-    grenade.setVisible(false);
+    grenade.disableBody(true, true);
   }
 
   explodeGrenade(grenade) {
@@ -1232,6 +1322,8 @@ class PlayScene extends Phaser.Scene {
     }
 
     this.isPlayerDead = true;
+    this.isChargingGrenade = false;
+    this.grenadeChargeRatio = 0;
     this.playerHealth = 0;
     this.player.clearTint();
     this.player.setTint(0x6d0f18);
@@ -1240,6 +1332,7 @@ class PlayScene extends Phaser.Scene {
     this.player.body.enable = false;
     this.weapon.setVisible(false);
     this.deathText.setVisible(true);
+    this.updateGrenadeChargeIndicator();
     this.updateUi();
   }
 
@@ -1251,8 +1344,11 @@ class PlayScene extends Phaser.Scene {
         ? `OVERHEATED ${((overheatRemaining / 1000) | 0) + 1}s`
         : `Heat ${Math.round(this.weaponHeat)}%`;
     const grenadeRemaining = Math.max(0, this.nextGrenadeTime - time);
-    const grenadeText =
-      grenadeRemaining > 0 ? `${(grenadeRemaining / 1000).toFixed(1)}s` : "READY";
+    const grenadeText = this.isChargingGrenade
+      ? `CHARGING ${Math.round(this.getGrenadeChargeRatio(time) * 100)}%`
+      : grenadeRemaining > 0
+        ? `${(grenadeRemaining / 1000).toFixed(1)}s`
+        : "READY";
 
     this.hudText.setText(
       `Health: ${this.playerHealth}/${this.playerMaxHealth}\nScore: ${this.score}\nStatus: ${statusText}\nWeapon: ${weaponText}\nGrenade: ${grenadeText}`
