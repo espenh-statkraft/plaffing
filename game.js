@@ -50,6 +50,9 @@ class PlayScene extends Phaser.Scene {
     this.balloonRapidFireMs = 8000;
     this.balloonShieldMs = 5000;
     this.rapidFireCooldownMs = 55;
+    this.powerupToastHoldMs = 700;
+    this.powerupToastFadeMs = 950;
+    this.helpIntroMs = 5500;
 
     this.skyTwinkleSpeed = 0.0019;
     this.driftCloudCount = 8;
@@ -321,6 +324,7 @@ class PlayScene extends Phaser.Scene {
     this.makeMountainTexture("mountains_far", "#12383f", "#0e2c33", 20, 58);
     this.makeMountainTexture("mountains_mid", "#1f4a45", "#173a37", 28, 74);
     this.makeMountainTexture("mountains_near", "#32635a", "#274d46", 36, 94);
+    this.makeMountainTexture("foreground_silhouette", "#0b2e34", "#072127", 16, 62);
 
     this.sky = this.add
       .tileSprite(
@@ -399,6 +403,18 @@ class PlayScene extends Phaser.Scene {
       .tileSprite(0, this.groundY - 140, this.worldWidth, 240, "mountains_near")
       .setOrigin(0, 1)
       .setDepth(-10);
+
+    this.fgSilhouette = this.add
+      .tileSprite(
+        0,
+        this.groundY - 46,
+        this.worldWidth,
+        140,
+        "foreground_silhouette"
+      )
+      .setOrigin(0, 1)
+      .setDepth(-2)
+      .setAlpha(0.42);
   }
 
   makeSkyTexture() {
@@ -635,6 +651,12 @@ class PlayScene extends Phaser.Scene {
     this.weapon = this.add.image(this.player.x, this.player.y - 8, "gun");
     this.weapon.setDepth(20);
 
+    this.shieldAura = this.add.circle(this.player.x, this.player.y - 14, 24, 0x8fe9ff, 0.14);
+    this.shieldAura
+      .setStrokeStyle(2, 0xbff6ff, 0.85)
+      .setDepth(19)
+      .setVisible(false);
+
     this.physics.add.collider(this.player, this.platforms);
 
     this.coyoteTimer = 0;
@@ -654,6 +676,8 @@ class PlayScene extends Phaser.Scene {
 
     this.rapidFireUntil = 0;
     this.shieldUntil = 0;
+    this.helpPinned = false;
+    this.helpAutoHideAt = this.time.now + this.helpIntroMs;
   }
 
   createCombat() {
@@ -943,6 +967,7 @@ class PlayScene extends Phaser.Scene {
         backgroundColor: "rgba(8,20,22,0.5)"
       })
       .setScrollFactor(0)
+      .setShadow(0, 2, "#001114", 2, false, true)
       .setDepth(1000);
 
     this.helpText = this.add
@@ -960,7 +985,21 @@ class PlayScene extends Phaser.Scene {
         }
       )
       .setScrollFactor(0)
-      .setDepth(1000);
+      .setShadow(0, 2, "#001114", 2, false, true)
+      .setDepth(1000)
+      .setVisible(true);
+
+    this.helpHintText = this.add
+      .text(14, this.scale.height - 28, "Press H to toggle controls", {
+        fontFamily: "monospace",
+        fontSize: "13px",
+        color: "#cdebf1",
+        padding: { x: 6, y: 3 },
+        backgroundColor: "rgba(8,20,22,0.35)"
+      })
+      .setScrollFactor(0)
+      .setDepth(1000)
+      .setShadow(0, 1, "#001114", 2, false, true);
 
     this.deathText = this.add
       .text(this.scale.width * 0.5, this.scale.height * 0.42, "YOU DIED\nPress R to restart", {
@@ -986,6 +1025,7 @@ class PlayScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setScrollFactor(0)
+      .setShadow(0, 2, "#000000", 2, false, true)
       .setDepth(1150)
       .setVisible(false);
 
@@ -1002,6 +1042,7 @@ class PlayScene extends Phaser.Scene {
       .setVisible(false);
 
     this.grenadeChargeBar = this.add.graphics().setScrollFactor(0).setDepth(1000);
+    this.statusBars = this.add.graphics().setScrollFactor(0).setDepth(1001);
 
     this.powerupToast = this.add
       .text(this.scale.width * 0.5, 118, "", {
@@ -1013,6 +1054,7 @@ class PlayScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setScrollFactor(0)
+      .setShadow(0, 2, "#000000", 3, false, true)
       .setDepth(1160)
       .setVisible(false);
 
@@ -1031,10 +1073,11 @@ class PlayScene extends Phaser.Scene {
 
     this.tweens.add({
       targets: this.powerupToast,
-      y: 96,
+      y: 88,
       alpha: 0,
-      scale: 1.12,
-      duration: 520,
+      scale: 1.1,
+      delay: this.powerupToastHoldMs,
+      duration: this.powerupToastFadeMs,
       ease: "Cubic.Out",
       onComplete: () => {
         this.powerupToast.setVisible(false);
@@ -1055,6 +1098,7 @@ class PlayScene extends Phaser.Scene {
       jumpSpace: Phaser.Input.Keyboard.KeyCodes.SPACE,
       jumpW: Phaser.Input.Keyboard.KeyCodes.W,
       jumpUp: Phaser.Input.Keyboard.KeyCodes.UP,
+      toggleHelpH: Phaser.Input.Keyboard.KeyCodes.H,
       restartR: Phaser.Input.Keyboard.KeyCodes.R
     });
   }
@@ -1077,6 +1121,7 @@ class PlayScene extends Phaser.Scene {
 
   update(time, delta) {
     this.updateParallax(time, delta);
+    this.updateHelpOverlay(time);
 
     if (this.isPlayerDead) {
       if (Phaser.Input.Keyboard.JustDown(this.keys.restartR)) {
@@ -1151,8 +1196,29 @@ class PlayScene extends Phaser.Scene {
     this.updateGrenades(time);
     this.updateComboState(time);
     this.updateAnimation(moveDir, onGround);
+    this.updateShieldAura(time);
     this.updateGrenadeChargeIndicator(time);
     this.updateUi(time);
+  }
+
+  updateShieldAura(time) {
+    if (!this.shieldAura) {
+      return;
+    }
+
+    const shieldActive = !this.isPlayerDead && time < this.shieldUntil;
+    if (!shieldActive) {
+      this.shieldAura.setVisible(false);
+      return;
+    }
+
+    const pulse = (Math.sin(time * 0.012) + 1) * 0.5;
+    this.shieldAura
+      .setVisible(true)
+      .setPosition(this.player.x, this.player.y - 14)
+      .setRadius(23 + pulse * 4)
+      .setAlpha(0.2 + pulse * 0.14)
+      .setStrokeStyle(2, 0xbff6ff, 0.75 + pulse * 0.2);
   }
 
   updateBalloons(time) {
@@ -1175,6 +1241,19 @@ class PlayScene extends Phaser.Scene {
       this.resetCombo();
       this.updateUi(time);
     }
+  }
+
+  updateHelpOverlay(time) {
+    if (Phaser.Input.Keyboard.JustDown(this.keys.toggleHelpH)) {
+      this.helpPinned = !this.helpPinned;
+      if (!this.helpPinned) {
+        this.helpAutoHideAt = Math.min(this.helpAutoHideAt, time + 3000);
+      }
+    }
+
+    const shouldShow = this.helpPinned || time < this.helpAutoHideAt;
+    this.helpText.setVisible(shouldShow);
+    this.helpHintText.setText(shouldShow ? "Press H to hide controls" : "Press H to show controls");
   }
 
   getComboMultiplierForCount(count) {
@@ -1759,6 +1838,14 @@ class PlayScene extends Phaser.Scene {
     const now = this.time.now;
     if (now < this.shieldUntil) {
       this.fx.emitParticleAt(this.player.x, this.player.y - 14, 4);
+      this.tweens.killTweensOf(this.shieldAura);
+      this.shieldAura.setAlpha(0.5);
+      this.tweens.add({
+        targets: this.shieldAura,
+        alpha: 0.24,
+        duration: 130,
+        ease: "Quad.Out"
+      });
       return;
     }
 
@@ -1799,6 +1886,7 @@ class PlayScene extends Phaser.Scene {
     this.player.setAcceleration(0, 0);
     this.player.body.enable = false;
     this.weapon.setVisible(false);
+    this.shieldAura.setVisible(false);
     this.deathText.setVisible(true);
     this.updateGrenadeChargeIndicator();
     this.updateUi();
@@ -1842,6 +1930,30 @@ class PlayScene extends Phaser.Scene {
     );
 
     this.hudText.setColor(this.comboCount > 0 ? "#fff2c7" : "#e6fff2");
+
+    const barX = 14;
+    const healthY = 178;
+    const heatY = 202;
+    const barW = 240;
+    const barH = 15;
+    const healthRatio = Phaser.Math.Clamp(this.playerHealth / this.playerMaxHealth, 0, 1);
+    const heatRatio = Phaser.Math.Clamp(this.weaponHeat / this.weaponHeatMax, 0, 1);
+
+    this.statusBars.clear();
+
+    this.statusBars.fillStyle(0x071115, 0.62);
+    this.statusBars.fillRect(barX, healthY, barW, barH);
+    this.statusBars.lineStyle(2, 0x82c9bf, 0.88);
+    this.statusBars.strokeRect(barX, healthY, barW, barH);
+    this.statusBars.fillStyle(0x44d78d, 0.95);
+    this.statusBars.fillRect(barX + 2, healthY + 2, Math.max(2, (barW - 4) * healthRatio), barH - 4);
+
+    this.statusBars.fillStyle(0x140f0b, 0.7);
+    this.statusBars.fillRect(barX, heatY, barW, barH);
+    this.statusBars.lineStyle(2, 0xd2a166, 0.9);
+    this.statusBars.strokeRect(barX, heatY, barW, barH);
+    this.statusBars.fillStyle(heatRatio >= 0.95 ? 0xff6b54 : 0xffb062, 0.95);
+    this.statusBars.fillRect(barX + 2, heatY + 2, Math.max(2, (barW - 4) * heatRatio), barH - 4);
   }
 
   updateAnimation(moveDir, onGround) {
@@ -1880,6 +1992,8 @@ class PlayScene extends Phaser.Scene {
     this.bgFar.tilePositionX = camX * 0.12;
     this.bgMid.tilePositionX = camX * 0.22;
     this.bgNear.tilePositionX = camX * 0.34;
+    this.fgSilhouette.tilePositionX = camX * 0.58;
+    this.fgSilhouette.tilePositionY = Math.sin(time * 0.00023) * 1.8;
 
     this.updateDriftClouds(delta);
   }
