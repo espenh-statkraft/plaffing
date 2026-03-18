@@ -41,6 +41,23 @@ class PlayScene extends Phaser.Scene {
     this.enemyContactDamage = 18;
     this.enemyBulletDamage = 12;
     this.enemyShootRange = 560;
+
+    this.comboWindowMs = 2600;
+    this.comboMilestoneInterval = 5;
+    this.comboMilestoneShake = 0.0036;
+
+    this.balloonHealAmount = 20;
+    this.balloonRapidFireMs = 8000;
+    this.balloonShieldMs = 5000;
+    this.rapidFireCooldownMs = 55;
+    this.powerupToastHoldMs = 700;
+    this.powerupToastFadeMs = 950;
+    this.helpIntroMs = 5500;
+
+    this.skyTwinkleSpeed = 0.0019;
+    this.driftCloudCount = 8;
+    this.driftCloudSpeedMin = 8;
+    this.driftCloudSpeedMax = 24;
   }
 
   preload() {}
@@ -57,6 +74,7 @@ class PlayScene extends Phaser.Scene {
     this.createGameState();
     this.createCombat();
     this.createEnemies();
+    this.createPowerups();
     this.createUi();
     this.createInput();
     this.createAudio();
@@ -322,6 +340,7 @@ class PlayScene extends Phaser.Scene {
     this.makeGrenadeTexture();
     this.makeGunTexture();
     this.makeEnemyTexture();
+    this.makeBalloonTexture();
     this.makePlayerTexture("player_idle", "idle");
     this.makePlayerTexture("player_walk_1", "walk1");
     this.makePlayerTexture("player_walk_2", "walk2");
@@ -430,6 +449,33 @@ class PlayScene extends Phaser.Scene {
     canvas.refresh();
   }
 
+  makeBalloonTexture() {
+    const w = 18;
+    const h = 28;
+    const canvas = this.textures.createCanvas("balloon", w, h);
+    const ctx = canvas.getContext();
+    ctx.imageSmoothingEnabled = false;
+
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(5, 4, 8, 1);
+    ctx.fillRect(4, 5, 10, 8);
+    ctx.fillRect(5, 13, 8, 5);
+    ctx.fillRect(6, 18, 6, 2);
+
+    ctx.fillStyle = "#d9ecff";
+    ctx.fillRect(6, 6, 2, 3);
+    ctx.fillRect(8, 5, 1, 2);
+
+    ctx.fillStyle = "#f2d0a1";
+    ctx.fillRect(8, 20, 2, 2);
+    ctx.fillRect(8, 22, 1, 3);
+    ctx.fillRect(8, 25, 2, 1);
+
+    canvas.refresh();
+  }
+
   makeEnemyTexture() {
     const w = 20;
     const h = 28;
@@ -514,9 +560,15 @@ class PlayScene extends Phaser.Scene {
 
   createBackground() {
     this.makeSkyTexture();
+    this.makeStarFieldTexture("stars_far", 120, 0.55);
+    this.makeStarFieldTexture("stars_near", 70, 0.9);
+    this.makeCloudLayerTexture("clouds_far", "#d6eee7", "#aacfc4", 8, 0.28);
+    this.makeCloudLayerTexture("clouds_near", "#e8f4f0", "#b8dbd1", 11, 0.4);
+    this.makeCloudChunkTexture();
     this.makeMountainTexture("mountains_far", "#12383f", "#0e2c33", 20, 58);
     this.makeMountainTexture("mountains_mid", "#1f4a45", "#173a37", 28, 74);
     this.makeMountainTexture("mountains_near", "#32635a", "#274d46", 36, 94);
+    this.makeMountainTexture("foreground_silhouette", "#0b2e34", "#072127", 16, 62);
 
     this.sky = this.add
       .tileSprite(
@@ -529,6 +581,57 @@ class PlayScene extends Phaser.Scene {
       .setOrigin(0)
       .setScrollFactor(0)
       .setDepth(-40);
+
+    this.starsFar = this.add
+      .tileSprite(
+        0,
+        0,
+        this.cameras.main.width,
+        this.cameras.main.height,
+        "stars_far"
+      )
+      .setOrigin(0)
+      .setScrollFactor(0)
+      .setDepth(-38);
+
+    this.starsNear = this.add
+      .tileSprite(
+        0,
+        0,
+        this.cameras.main.width,
+        this.cameras.main.height,
+        "stars_near"
+      )
+      .setOrigin(0)
+      .setScrollFactor(0)
+      .setDepth(-36)
+      .setAlpha(0.8);
+
+    this.cloudsFar = this.add
+      .tileSprite(
+        0,
+        this.groundY - 520,
+        this.worldWidth,
+        190,
+        "clouds_far"
+      )
+      .setOrigin(0, 1)
+      .setDepth(-34)
+      .setAlpha(0.5);
+
+    this.cloudsNear = this.add
+      .tileSprite(
+        0,
+        this.groundY - 480,
+        this.worldWidth,
+        230,
+        "clouds_near"
+      )
+      .setOrigin(0, 1)
+      .setDepth(-32)
+      .setAlpha(0.66);
+
+    this.createDriftClouds();
 
     this.bgFar = this.add
       .tileSprite(0, this.groundY - 280, this.worldWidth, 220, "mountains_far")
@@ -544,6 +647,18 @@ class PlayScene extends Phaser.Scene {
       .tileSprite(0, this.groundY - 140, this.worldWidth, 240, "mountains_near")
       .setOrigin(0, 1)
       .setDepth(-10);
+
+    this.fgSilhouette = this.add
+      .tileSprite(
+        0,
+        this.groundY - 46,
+        this.worldWidth,
+        140,
+        "foreground_silhouette"
+      )
+      .setOrigin(0, 1)
+      .setDepth(-2)
+      .setAlpha(0.42);
   }
 
   makeSkyTexture() {
@@ -569,6 +684,147 @@ class PlayScene extends Phaser.Scene {
     }
 
     canvas.refresh();
+  }
+
+  makeCloudChunkTexture() {
+    const w = 104;
+    const h = 48;
+    const canvas = this.textures.createCanvas("cloud_chunk", w, h);
+    const ctx = canvas.getContext();
+    ctx.imageSmoothingEnabled = false;
+
+    ctx.clearRect(0, 0, w, h);
+
+    const puff = (x, y, pw, ph) => {
+      ctx.fillStyle = "#a4ccc0";
+      ctx.fillRect(x, y + 2, pw, ph);
+      ctx.fillStyle = "#e8f4f1";
+      ctx.fillRect(x + 1, y, pw - 2, ph - 2);
+    };
+
+    puff(8, 18, 24, 13);
+    puff(24, 11, 28, 16);
+    puff(46, 8, 30, 17);
+    puff(70, 14, 24, 14);
+    ctx.fillStyle = "#a4ccc0";
+    ctx.fillRect(16, 29, 68, 6);
+    ctx.fillStyle = "#e8f4f1";
+    ctx.fillRect(18, 28, 64, 3);
+
+    canvas.refresh();
+  }
+
+  makeStarFieldTexture(key, starCount, brightnessScale) {
+    const w = 512;
+    const h = 256;
+    const canvas = this.textures.createCanvas(key, w, h);
+    const ctx = canvas.getContext();
+    ctx.imageSmoothingEnabled = false;
+
+    ctx.clearRect(0, 0, w, h);
+
+    for (let i = 0; i < starCount; i += 1) {
+      const x = Phaser.Math.Between(0, w - 1);
+      const y = Phaser.Math.Between(0, h - 1);
+      const size = Phaser.Math.Between(1, 2);
+      const base = Phaser.Math.Between(180, 255);
+      const b = Math.round(base * brightnessScale);
+      ctx.fillStyle = `rgb(${b},${b},${b + Phaser.Math.Between(0, 15)})`;
+      ctx.fillRect(x, y, size, 1);
+
+      if (Phaser.Math.Between(0, 100) > 80) {
+        ctx.fillStyle = `rgba(255,255,255,${0.16 * brightnessScale})`;
+        ctx.fillRect(x - 1, y, size + 2, 1);
+      }
+    }
+
+    canvas.refresh();
+  }
+
+  makeCloudLayerTexture(key, brightColor, shadeColor, cloudCount, hazeAlpha) {
+    const w = 512;
+    const h = 180;
+    const canvas = this.textures.createCanvas(key, w, h);
+    const ctx = canvas.getContext();
+    ctx.imageSmoothingEnabled = false;
+
+    ctx.clearRect(0, 0, w, h);
+
+    for (let i = 0; i < cloudCount; i += 1) {
+      const puffW = Phaser.Math.Between(24, 42);
+      const puffH = Phaser.Math.Between(8, 14);
+      const x = Phaser.Math.Between(-20, w - 12);
+      const y = Phaser.Math.Between(18, h - 48);
+      const puffs = Phaser.Math.Between(3, 5);
+
+      for (let p = 0; p < puffs; p += 1) {
+        const px = x + p * Phaser.Math.Between(10, 16);
+        const py = y + Phaser.Math.Between(-3, 3);
+        const pw = puffW + Phaser.Math.Between(-8, 8);
+        const ph = puffH + Phaser.Math.Between(-2, 3);
+
+        ctx.fillStyle = shadeColor;
+        ctx.fillRect(px, py + 2, pw, ph);
+        ctx.fillStyle = brightColor;
+        ctx.fillRect(px + 1, py, pw - 2, ph - 2);
+      }
+
+      const flatWidth = puffW * puffs - 2;
+      ctx.fillStyle = shadeColor;
+      ctx.fillRect(x + 5, y + puffH + 2, flatWidth, 4);
+      ctx.fillStyle = brightColor;
+      ctx.fillRect(x + 6, y + puffH + 1, flatWidth - 2, 2);
+    }
+
+    ctx.fillStyle = `rgba(195, 230, 220, ${hazeAlpha})`;
+    ctx.fillRect(0, h - 28, w, 28);
+
+    canvas.refresh();
+  }
+
+  createDriftClouds() {
+    this.driftClouds = [];
+    for (let i = 0; i < this.driftCloudCount; i += 1) {
+      const scrollFactor = Phaser.Math.FloatBetween(0.17, 0.31);
+      const cloud = this.add
+        .image(
+          Phaser.Math.Between(0, this.worldWidth),
+          Phaser.Math.Between(this.groundY - 700, this.groundY - 470),
+          "cloud_chunk"
+        )
+        .setScrollFactor(scrollFactor)
+        .setDepth(-33)
+        .setAlpha(Phaser.Math.FloatBetween(0.35, 0.62))
+        .setScale(Phaser.Math.FloatBetween(1.1, 2.2));
+
+      cloud.cloudSpeed = Phaser.Math.FloatBetween(
+        this.driftCloudSpeedMin,
+        this.driftCloudSpeedMax
+      );
+      this.driftClouds.push(cloud);
+    }
+  }
+
+  updateDriftClouds(delta) {
+    const cam = this.cameras.main;
+    const dt = delta / 1000;
+    const margin = 180;
+
+    for (let i = 0; i < this.driftClouds.length; i += 1) {
+      const cloud = this.driftClouds[i];
+      cloud.x += cloud.cloudSpeed * dt;
+
+      const sx = cloud.x - cam.scrollX * cloud.scrollFactorX;
+      const halfW = (cloud.width * cloud.scaleX) * 0.5;
+      if (sx - halfW > cam.width + margin) {
+        cloud.x = cam.scrollX * cloud.scrollFactorX - margin - halfW;
+        cloud.y = Phaser.Math.Between(this.groundY - 700, this.groundY - 460);
+        cloud.cloudSpeed = Phaser.Math.FloatBetween(
+          this.driftCloudSpeedMin,
+          this.driftCloudSpeedMax
+        );
+      }
+    }
   }
 
   makeMountainTexture(key, topColor, baseColor, stepSize, maxHeight) {
@@ -639,6 +895,12 @@ class PlayScene extends Phaser.Scene {
     this.weapon = this.add.image(this.player.x, this.player.y - 8, "gun");
     this.weapon.setDepth(20);
 
+    this.shieldAura = this.add.circle(this.player.x, this.player.y - 14, 24, 0x8fe9ff, 0.14);
+    this.shieldAura
+      .setStrokeStyle(2, 0xbff6ff, 0.85)
+      .setDepth(19)
+      .setVisible(false);
+
     this.physics.add.collider(this.player, this.platforms);
 
     this.coyoteTimer = 0;
@@ -652,6 +914,15 @@ class PlayScene extends Phaser.Scene {
     this.hasGameStarted = false;
     this.isPlayerDead = false;
     this.nextPlayerDamageTime = 0;
+
+    this.comboCount = 0;
+    this.comboMultiplier = 1;
+    this.comboExpiresAt = 0;
+
+    this.rapidFireUntil = 0;
+    this.shieldUntil = 0;
+    this.helpPinned = false;
+    this.helpAutoHideAt = this.time.now + this.helpIntroMs;
   }
 
   createCombat() {
@@ -794,6 +1065,91 @@ class PlayScene extends Phaser.Scene {
     );
   }
 
+  createPowerups() {
+    this.balloons = this.physics.add.group({
+      defaultKey: "balloon",
+      maxSize: 40,
+      allowGravity: false,
+      immovable: true
+    });
+
+    const spawnData = [
+      { x: 450, height: 210 },
+      { x: 980, height: 380 },
+      { x: 1650, height: 280 },
+      { x: 2380, height: 450 },
+      { x: 3040, height: 310 },
+      { x: 3890, height: 370 },
+      { x: 4480, height: 260 },
+      { x: 4960, height: 340 }
+    ];
+
+    spawnData.forEach((spawn) => this.spawnBalloon(spawn.x, spawn.height));
+
+    this.physics.add.overlap(this.player, this.balloons, (_player, balloon) => {
+      this.popBalloon(balloon, true);
+    });
+
+    this.physics.add.overlap(this.bullets, this.balloons, (bullet, balloon) => {
+      if (!bullet.active || !balloon.active) {
+        return;
+      }
+
+      this.destroyBullet(bullet, false);
+      this.popBalloon(balloon, false);
+    });
+  }
+
+  spawnBalloon(x, height) {
+    const y = this.yFromGround(height);
+    const balloon = this.balloons.get(x, y, "balloon");
+    if (!balloon) {
+      return;
+    }
+
+    balloon.enableBody(true, x, y, true, true);
+    balloon.setDepth(17);
+    balloon.setScale(1.9);
+    balloon.body.allowGravity = false;
+    balloon.body.setCircle(6, 3, 4);
+    balloon.baseY = y;
+    balloon.floatPhase = Phaser.Math.FloatBetween(0, Math.PI * 2);
+    balloon.floatSpeed = Phaser.Math.FloatBetween(0.0014, 0.0022);
+    balloon.floatAmp = Phaser.Math.Between(8, 17);
+
+    const tintChoices = [0xff6f91, 0x5ec8ff, 0xffcd56, 0x9cff72];
+    balloon.setTint(tintChoices[Phaser.Math.Between(0, tintChoices.length - 1)]);
+  }
+
+  popBalloon(balloon, touchedByPlayer) {
+    if (!balloon.active || this.isPlayerDead) {
+      return;
+    }
+
+    const x = balloon.x;
+    const y = balloon.y;
+    balloon.disableBody(true, true);
+    this.fx.emitParticleAt(x, y, 16);
+
+    const roll = Math.random();
+    if (roll < 0.4) {
+      this.playerHealth = Math.min(this.playerMaxHealth, this.playerHealth + this.balloonHealAmount);
+      this.showPowerupToast(`POP! +${this.balloonHealAmount} HP`, "#b7ffb7");
+    } else if (roll < 0.75) {
+      this.rapidFireUntil = Math.max(this.rapidFireUntil, this.time.now) + this.balloonRapidFireMs;
+      this.showPowerupToast("RAPID FIRE!", "#ffd88f");
+    } else {
+      this.shieldUntil = Math.max(this.shieldUntil, this.time.now) + this.balloonShieldMs;
+      this.showPowerupToast("SHIELD UP!", "#8fe9ff");
+    }
+
+    if (touchedByPlayer) {
+      this.score += 10;
+    }
+
+    this.updateUi();
+  }
+
   spawnEnemy(x, height) {
     const y = height > 0 ? this.yFromGround(height) - 38 : this.groundY - 38;
     const enemy = this.enemies.create(x, y, "enemy");
@@ -856,13 +1212,14 @@ class PlayScene extends Phaser.Scene {
         backgroundColor: "rgba(8,20,22,0.5)"
       })
       .setScrollFactor(0)
+      .setShadow(0, 2, "#001114", 2, false, true)
       .setDepth(1000);
 
     this.helpText = this.add
       .text(
         14,
         102,
-        "WASD / Arrow keys to move\nSpace, W or Up to jump (double jump)\nMouse to aim, hold LMB to shoot\nHold RMB to charge grenade, release to throw\nR to restart after death",
+        "WASD / Arrow keys to move\nSpace, W or Up to jump (double jump)\nMouse to aim, hold LMB to shoot\nHold RMB to charge grenade, release to throw\nPop balloons for random powerups\nR to restart after death",
         {
           fontFamily: "monospace",
           fontSize: "15px",
@@ -873,7 +1230,21 @@ class PlayScene extends Phaser.Scene {
         }
       )
       .setScrollFactor(0)
-      .setDepth(1000);
+      .setShadow(0, 2, "#001114", 2, false, true)
+      .setDepth(1000)
+      .setVisible(true);
+
+    this.helpHintText = this.add
+      .text(14, this.scale.height - 28, "Press H to toggle controls", {
+        fontFamily: "monospace",
+        fontSize: "13px",
+        color: "#cdebf1",
+        padding: { x: 6, y: 3 },
+        backgroundColor: "rgba(8,20,22,0.35)"
+      })
+      .setScrollFactor(0)
+      .setDepth(1000)
+      .setShadow(0, 1, "#001114", 2, false, true);
 
     this.deathText = this.add
       .text(this.scale.width * 0.5, this.scale.height * 0.42, "YOU DIED\nPress R to restart", {
@@ -889,6 +1260,20 @@ class PlayScene extends Phaser.Scene {
       .setDepth(1200)
       .setVisible(false);
 
+    this.comboPopup = this.add
+      .text(this.scale.width * 0.5, 72, "", {
+        fontFamily: "monospace",
+        fontSize: "26px",
+        color: "#ffe8a8",
+        stroke: "#2c1e0c",
+        strokeThickness: 6
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setShadow(0, 2, "#000000", 2, false, true)
+      .setDepth(1150)
+      .setVisible(false);
+
     this.grenadeChargeText = this.add
       .text(14, 202, "", {
         fontFamily: "monospace",
@@ -902,6 +1287,21 @@ class PlayScene extends Phaser.Scene {
       .setVisible(false);
 
     this.grenadeChargeBar = this.add.graphics().setScrollFactor(0).setDepth(1000);
+    this.statusBars = this.add.graphics().setScrollFactor(0).setDepth(1001);
+
+    this.powerupToast = this.add
+      .text(this.scale.width * 0.5, 118, "", {
+        fontFamily: "monospace",
+        fontSize: "24px",
+        color: "#fff6b2",
+        stroke: "#2b1f08",
+        strokeThickness: 6
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setShadow(0, 2, "#000000", 3, false, true)
+      .setDepth(1160)
+      .setVisible(false);
 
     this.updateUi();
   }
@@ -969,8 +1369,10 @@ class PlayScene extends Phaser.Scene {
   setGameplayUiVisible(isVisible) {
     this.hudText.setVisible(isVisible);
     this.helpText.setVisible(isVisible);
+    this.helpHintText.setVisible(isVisible);
     this.grenadeChargeText.setVisible(isVisible && this.isChargingGrenade);
     this.grenadeChargeBar.setVisible(isVisible);
+    this.statusBars.setVisible(isVisible);
   }
 
   startGame() {
@@ -995,6 +1397,30 @@ class PlayScene extends Phaser.Scene {
     }
   }
 
+  showPowerupToast(text, color = "#fff6b2") {
+    this.tweens.killTweensOf(this.powerupToast);
+    this.powerupToast
+      .setText(text)
+      .setColor(color)
+      .setPosition(this.scale.width * 0.5, 118)
+      .setScale(1)
+      .setAlpha(1)
+      .setVisible(true);
+
+    this.tweens.add({
+      targets: this.powerupToast,
+      y: 88,
+      alpha: 0,
+      scale: 1.1,
+      delay: this.powerupToastHoldMs,
+      duration: this.powerupToastFadeMs,
+      ease: "Cubic.Out",
+      onComplete: () => {
+        this.powerupToast.setVisible(false);
+      }
+    });
+  }
+
   createInput() {
     if (this.input.mouse) {
       this.input.mouse.disableContextMenu();
@@ -1008,6 +1434,7 @@ class PlayScene extends Phaser.Scene {
       jumpSpace: Phaser.Input.Keyboard.KeyCodes.SPACE,
       jumpW: Phaser.Input.Keyboard.KeyCodes.W,
       jumpUp: Phaser.Input.Keyboard.KeyCodes.UP,
+      toggleHelpH: Phaser.Input.Keyboard.KeyCodes.H,
       restartR: Phaser.Input.Keyboard.KeyCodes.R
     });
   }
@@ -1029,7 +1456,8 @@ class PlayScene extends Phaser.Scene {
   }
 
   update(time, delta) {
-    this.updateParallax();
+    this.updateParallax(time, delta);
+    this.updateHelpOverlay(time);
 
     if (!this.hasGameStarted) {
       if (Phaser.Input.Keyboard.JustDown(this.keys.jumpSpace)) {
@@ -1105,13 +1533,131 @@ class PlayScene extends Phaser.Scene {
     this.updateAimAndWeapon();
     this.updateShooting(time);
     this.updateGrenadeThrowing(time);
+    this.updateBalloons(time);
     this.updateEnemies(time);
     this.updateBullets(time);
     this.updateEnemyBullets(time);
     this.updateGrenades(time);
+    this.updateComboState(time);
     this.updateAnimation(moveDir, onGround);
+    this.updateShieldAura(time);
     this.updateGrenadeChargeIndicator(time);
     this.updateUi(time);
+  }
+
+  updateShieldAura(time) {
+    if (!this.shieldAura) {
+      return;
+    }
+
+    const shieldActive = !this.isPlayerDead && time < this.shieldUntil;
+    if (!shieldActive) {
+      this.shieldAura.setVisible(false);
+      return;
+    }
+
+    const pulse = (Math.sin(time * 0.012) + 1) * 0.5;
+    this.shieldAura
+      .setVisible(true)
+      .setPosition(this.player.x, this.player.y - 14)
+      .setRadius(23 + pulse * 4)
+      .setAlpha(0.2 + pulse * 0.14)
+      .setStrokeStyle(2, 0xbff6ff, 0.75 + pulse * 0.2);
+  }
+
+  updateBalloons(time) {
+    if (!this.balloons) {
+      return;
+    }
+
+    this.balloons.children.each((balloon) => {
+      if (!balloon.active) {
+        return;
+      }
+
+      balloon.y = balloon.baseY + Math.sin(time * balloon.floatSpeed + balloon.floatPhase) * balloon.floatAmp;
+      balloon.setRotation(Math.sin(time * 0.0017 + balloon.floatPhase) * 0.08);
+    });
+  }
+
+  updateComboState(time) {
+    if (this.comboCount > 0 && time >= this.comboExpiresAt) {
+      this.resetCombo();
+      this.updateUi(time);
+    }
+  }
+
+  updateHelpOverlay(time) {
+    if (!this.hasGameStarted) {
+      this.helpText.setVisible(false);
+      this.helpHintText.setVisible(false);
+      return;
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(this.keys.toggleHelpH)) {
+      this.helpPinned = !this.helpPinned;
+      if (!this.helpPinned) {
+        this.helpAutoHideAt = Math.min(this.helpAutoHideAt, time + 3000);
+      }
+    }
+
+    const shouldShow = this.helpPinned || time < this.helpAutoHideAt;
+    this.helpText.setVisible(shouldShow);
+    this.helpHintText.setText(shouldShow ? "Press H to hide controls" : "Press H to show controls");
+  }
+
+  getComboMultiplierForCount(count) {
+    return 1 + Math.floor(count / 3) * 0.25;
+  }
+
+  formatComboMultiplier(value = this.comboMultiplier) {
+    return value.toFixed(2).replace(/\.00$/, "").replace(/0$/, "");
+  }
+
+  registerComboKill(time) {
+    this.comboCount += 1;
+    this.comboMultiplier = this.getComboMultiplierForCount(this.comboCount);
+    this.comboExpiresAt = time + this.comboWindowMs;
+
+    if (
+      this.comboCount >= this.comboMilestoneInterval &&
+      this.comboCount % this.comboMilestoneInterval === 0
+    ) {
+      this.cameras.main.shake(120, this.comboMilestoneShake);
+    }
+
+    if (this.comboCount >= 2) {
+      this.showComboPopup();
+    }
+  }
+
+  resetCombo() {
+    this.comboCount = 0;
+    this.comboMultiplier = 1;
+    this.comboExpiresAt = 0;
+  }
+
+  showComboPopup() {
+    this.tweens.killTweensOf(this.comboPopup);
+    this.comboPopup.setText(
+      `COMBO x${this.formatComboMultiplier()}  (${this.comboCount})`
+    );
+    this.comboPopup.setPosition(this.scale.width * 0.5, 72);
+    this.comboPopup.setScale(1);
+    this.comboPopup.setAlpha(1);
+    this.comboPopup.setVisible(true);
+
+    this.tweens.add({
+      targets: this.comboPopup,
+      y: 54,
+      alpha: 0,
+      scale: 1.15,
+      duration: 420,
+      ease: "Cubic.Out",
+      onComplete: () => {
+        this.comboPopup.setVisible(false);
+      }
+    });
   }
 
   updateAimAndWeapon() {
@@ -1183,7 +1729,8 @@ class PlayScene extends Phaser.Scene {
       return;
     }
 
-    this.nextShootTime = time + this.shootCooldownMs;
+    const cooldown = time < this.rapidFireUntil ? this.rapidFireCooldownMs : this.shootCooldownMs;
+    this.nextShootTime = time + cooldown;
   }
 
   updateWeaponHeat(time, delta) {
@@ -1610,7 +2157,9 @@ class PlayScene extends Phaser.Scene {
       enemy.armorText = null;
     }
 
-    this.score += enemy.maxArmor * 10;
+    this.registerComboKill(this.time.now);
+    const points = Math.round(enemy.maxArmor * 10 * this.comboMultiplier);
+    this.score += points;
     this.updateUi();
     this.playEnemyDeathSfx();
     enemy.disableBody(true, true);
@@ -1643,12 +2192,26 @@ class PlayScene extends Phaser.Scene {
     }
 
     const now = this.time.now;
+    if (now < this.shieldUntil) {
+      this.fx.emitParticleAt(this.player.x, this.player.y - 14, 4);
+      this.tweens.killTweensOf(this.shieldAura);
+      this.shieldAura.setAlpha(0.5);
+      this.tweens.add({
+        targets: this.shieldAura,
+        alpha: 0.24,
+        duration: 130,
+        ease: "Quad.Out"
+      });
+      return;
+    }
+
     if (now < this.nextPlayerDamageTime) {
       return;
     }
 
     this.playerHealth = Math.max(0, this.playerHealth - amount);
     this.nextPlayerDamageTime = now + this.playerInvulnMs;
+    this.resetCombo();
 
     this.player.setTintFill(0xff7b7b);
     this.time.delayedCall(90, () => {
@@ -1680,6 +2243,7 @@ class PlayScene extends Phaser.Scene {
     this.player.setAcceleration(0, 0);
     this.player.body.enable = false;
     this.weapon.setVisible(false);
+    this.shieldAura.setVisible(false);
     this.deathText.setVisible(true);
     this.playPlayerDeathSfx();
     this.updateGrenadeChargeIndicator();
@@ -1700,9 +2264,54 @@ class PlayScene extends Phaser.Scene {
         ? `${(grenadeRemaining / 1000).toFixed(1)}s`
         : "READY";
 
+    const comboRemaining = Math.max(0, this.comboExpiresAt - time);
+    const comboText =
+      this.comboCount > 0
+        ? `x${this.formatComboMultiplier()} (${this.comboCount}) ${(
+            comboRemaining / 1000
+          ).toFixed(1)}s`
+        : "x1";
+
+    const rapidFireRemaining = Math.max(0, this.rapidFireUntil - time);
+    const shieldRemaining = Math.max(0, this.shieldUntil - time);
+    let powerText = "NONE";
+    if (rapidFireRemaining > 0 && shieldRemaining > 0) {
+      powerText = `RAPID ${(rapidFireRemaining / 1000).toFixed(1)}s | SHIELD ${(shieldRemaining / 1000).toFixed(1)}s`;
+    } else if (rapidFireRemaining > 0) {
+      powerText = `RAPID ${(rapidFireRemaining / 1000).toFixed(1)}s`;
+    } else if (shieldRemaining > 0) {
+      powerText = `SHIELD ${(shieldRemaining / 1000).toFixed(1)}s`;
+    }
+
     this.hudText.setText(
-      `Health: ${this.playerHealth}/${this.playerMaxHealth}\nScore: ${this.score}\nStatus: ${statusText}\nWeapon: ${weaponText}\nGrenade: ${grenadeText}`
+      `Health: ${this.playerHealth}/${this.playerMaxHealth}\nScore: ${this.score}\nCombo: ${comboText}\nStatus: ${statusText}\nWeapon: ${weaponText}\nGrenade: ${grenadeText}\nPower: ${powerText}`
     );
+
+    this.hudText.setColor(this.comboCount > 0 ? "#fff2c7" : "#e6fff2");
+
+    const barX = 14;
+    const healthY = 178;
+    const heatY = 202;
+    const barW = 240;
+    const barH = 15;
+    const healthRatio = Phaser.Math.Clamp(this.playerHealth / this.playerMaxHealth, 0, 1);
+    const heatRatio = Phaser.Math.Clamp(this.weaponHeat / this.weaponHeatMax, 0, 1);
+
+    this.statusBars.clear();
+
+    this.statusBars.fillStyle(0x071115, 0.62);
+    this.statusBars.fillRect(barX, healthY, barW, barH);
+    this.statusBars.lineStyle(2, 0x82c9bf, 0.88);
+    this.statusBars.strokeRect(barX, healthY, barW, barH);
+    this.statusBars.fillStyle(0x44d78d, 0.95);
+    this.statusBars.fillRect(barX + 2, healthY + 2, Math.max(2, (barW - 4) * healthRatio), barH - 4);
+
+    this.statusBars.fillStyle(0x140f0b, 0.7);
+    this.statusBars.fillRect(barX, heatY, barW, barH);
+    this.statusBars.lineStyle(2, 0xd2a166, 0.9);
+    this.statusBars.strokeRect(barX, heatY, barW, barH);
+    this.statusBars.fillStyle(heatRatio >= 0.95 ? 0xff6b54 : 0xffb062, 0.95);
+    this.statusBars.fillRect(barX + 2, heatY + 2, Math.max(2, (barW - 4) * heatRatio), barH - 4);
   }
 
   updateAnimation(moveDir, onGround) {
@@ -1721,12 +2330,30 @@ class PlayScene extends Phaser.Scene {
     }
   }
 
-  updateParallax() {
+  updateParallax(time, delta) {
     const camX = this.cameras.main.scrollX;
+    const camY = this.cameras.main.scrollY;
+    const twinkle = Math.sin(time * this.skyTwinkleSpeed);
     this.sky.tilePositionX = camX * 0.04;
+    this.sky.tilePositionY = camY * 0.02;
+    this.sky.alpha = 0.98 + twinkle * 0.02;
+    this.starsFar.tilePositionX = camX * 0.02;
+    this.starsFar.tilePositionY = camY * 0.01;
+    this.starsFar.alpha = 0.56 + twinkle * 0.05;
+    this.starsNear.tilePositionX = camX * 0.035;
+    this.starsNear.tilePositionY = camY * 0.02;
+    this.starsNear.alpha = 0.74 + Math.sin(time * (this.skyTwinkleSpeed * 1.7)) * 0.13;
+    this.cloudsFar.tilePositionX = camX * 0.08;
+    this.cloudsFar.tilePositionY = Math.sin(time * 0.00012) * 2;
+    this.cloudsNear.tilePositionX = camX * 0.14;
+    this.cloudsNear.tilePositionY = Math.cos(time * 0.00016) * 2;
     this.bgFar.tilePositionX = camX * 0.12;
     this.bgMid.tilePositionX = camX * 0.22;
     this.bgNear.tilePositionX = camX * 0.34;
+    this.fgSilhouette.tilePositionX = camX * 0.58;
+    this.fgSilhouette.tilePositionY = Math.sin(time * 0.00023) * 1.8;
+
+    this.updateDriftClouds(delta);
   }
 }
 
